@@ -9,6 +9,34 @@
 
 muechk::muechk():Tool(){}
 
+class TreeHacker : public TreeManager {
+public:
+  TreeHacker(){};
+
+  bool StealRunInfo(std::string file){
+    // get reference tree                                                                                                                                                                                                          
+    TFile fref(file.c_str(),"READ");
+    TTree* tref=(TTree*)fref.Get("data");
+
+    // copy over user info.                                                                                                                                                                                                        
+    // technically this isn't needed for this hack any more.                                                                                                                                                                       
+    for(int i=0; i<tref->GetUserInfo()->GetEntries(); ++i){
+      theTree->GetUserInfo()->Add(tref->GetUserInfo()->At(i)->Clone());
+    }
+
+    // since the above is probably too late, what we need to do now is copy it to the RunINFO member of the TreeManager                                                                                                            
+    // get the RunInfo from reference file                                                                                                                                                                                         
+    TList* rare = (TList*)tref->GetUserInfo()->FindObject("Rare");
+    RunInfo* ri_input = (RunInfo*)rare->At(0);
+
+    // copy to current tree                                                                                                                                                                                                        
+    RINFO = (RunInfo*)ri_input->Clone();
+    return (RINFO!=nullptr);
+
+  }
+};
+
+
 bool muechk::Initialise(std::string configfile, DataModel &data){
 
   if(configfile!="")  m_variables.Initialise(configfile);
@@ -26,6 +54,35 @@ bool muechk::Initialise(std::string configfile, DataModel &data){
   }
   tree_reader_ptr = m_data->Trees.at(reader_name);
 
+  // they call me a hacker, I'm a hacker man
+  int LUN = m_data->GetLUN(reader_name);
+  TreeManager* mgr = skroot_get_mgr(&LUN);
+  TreeHacker* h = (TreeHacker*) mgr;
+  h->StealRunInfo("/disk2/disk02/data7/sk6/run/0866/086614/rfm_run086614.000001.root");
+  
+  
+  // // copy run info guff over
+  // TFile ref_file("/disk02/data7/sk6/run/0867/086721/rfm_run086721.000001.root","READ");
+  // TTree* rfm_tree = (TTree*)ref_file.Get("data");
+  // rfm_tree = rfm_tree->GetTree();
+  // TList* tl = rfm_tree->GetUserInfo();
+  // tree_reader_ptr->GetTree()->GetCurrentFile()->cd();
+  // for(int i=0; i<tl->GetEntries(); ++i){ tree_reader_ptr->GetTree()->GetUserInfo()->Add(tl->At(i)->Clone()); }
+  // ref_file.Close();
+
+  // // //check run info entries
+  // std::cout << "GetEntries: " << tree_reader_ptr->GetTree()->GetUserInfo()->GetEntries() << std::endl;  
+  // if (tree_reader_ptr->GetTree()->GetUserInfo()->GetEntries() > 0){
+  //   tree_reader_ptr->GetTree()->GetUserInfo()->At(0)->Dump();
+  // }
+  
+  // int LUN = m_data->GetLUN(reader_name);
+  // TreeManager* mgr = skroot_get_mgr(&LUN);
+  // RunInfo* ri_mgr = mgr->GetRINFO();
+  // RunInfo* ri_input = (RunInfo*) tree_reader_ptr->GetTree()->GetTree()->GetUserInfo()->At(0);
+  // if (ri_input == nullptr){throw std::runtime_error("muechk::Execute: failed to get ri_input ptr!");}
+  // *ri_mgr = *ri_input;
+    
   nmue_plot = TH1D("nmue_plot", "nmue_plot", 20, 0, 0);
   
   return true;
@@ -42,6 +99,11 @@ bool muechk::Execute(){
   std::cout << "muechk::Execute: bsenergy: " << lowe_ptr->bsenergy <<std::endl;
   std::cout << "muechk::Execute: bsvertex[0]: " << lowe_ptr->bsvertex[0]<<std::endl;
 
+  if (lowe_ptr->bsenergy > 5000){
+    std::cout << "muechk::Execute: bad bsenergy, skipping" << std::endl;
+    return true;
+  }
+  
   //HACK FOR THE TIME BEING:
   skwaterlen_.skwaterlen = 10000.;
   
@@ -69,10 +131,10 @@ bool muechk::Execute(){
 
   */
 
-  std::cout << "calling runinf_(): " << std::endl;
+  std::cout << "muechk::Execute: calling runinf_(): " << std::endl;
   runinfsk_();
   
-  std::cout << "calling apfit(0):" << std::endl;
+  std::cout << "muechk::Execute: calling apfit(0):" << std::endl;
   int flag = 0;
   // apclrall_();
   // apclrsep_();

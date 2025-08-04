@@ -13,7 +13,7 @@ struct PairingInfo {
   float dt = 0;
   float dlt = 0;
   float dll = 0;
-  float muqismsk = 0;
+   float muqismsk = 0;
   float resQ = 0;
   int muon_type = 0;
   float bse = 0;
@@ -47,7 +47,7 @@ private:
   MTreeReader* muon_tree_ptr = nullptr;
   MTreeReader* relic_tree_ptr = nullptr;
 
-  int nbins = 50000;
+  int nbins = 200;
   
   void GetReaders();
 

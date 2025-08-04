@@ -24,6 +24,7 @@ bool CalculateSpallationVariables::Initialise(std::string configfile, DataModel 
     throw std::runtime_error("CalculateSpallationVariables::Initialise - no valid run type (calculate / cut) specified in the config file!");
   }
   return true;
+
 }
 
 
@@ -159,7 +160,8 @@ bool CalculateSpallationVariables::Execute(){
     /* oh we also need to the bsenergy: */
     float bse = LOWE_ptr->bsenergy;
     
-    PairingInfo p = {dt, dlt, dll, muqismsk, resQ, muon_type, bse};
+    PairingInfo p = {dt, dlt, dll, muqismsk, resQ, muon_type, bse}; 
+    //    PairingInfo p = {dt, dlt, dll, muon_type, bse}; // ditch the muon related variables for now
     std::string p_str = GetPairingString(p);
     pairings[p_str].push_back(p);
   }
@@ -275,11 +277,11 @@ std::string CalculateSpallationVariables::GetPairingString(PairingInfo p) const 
 }
 
 void CalculateSpallationVariables::CreateLikelihood(const std::string& name, const std::vector<PairingInfo>& vp) const {
-  TH1D pre_dt("pre_dt", "pre_dt", nbins, 0, 60), post_dt("post_dt", "post_dt", nbins, 0, 60),
-    pre_dlt("pre_dlt", "pre_dlt", nbins, 0, 5000), post_dlt("post_dlt", "post_dlt", nbins, 0, 5000),
-    pre_dll("pre_dll", "pre_dll", nbins, -5000, 5000), post_dll("post_dll", "post_dll", nbins, -5000, 5000),
-    pre_muqismsk("pre_muqismsk", "pre_muqismsk", nbins, 0, 250000), post_muqismsk("post_muqismsk", "post_muqismsk", nbins, 0, 250000),
-    pre_resQ("pre_resQ", "pre_resQ", nbins, -100000, 1000000), post_resQ("post_resQ", "post_resQ", nbins, -100000, 1000000);
+  TH1D pre_dt("pre_dt", "pre_dt", nbins, 0, 60), post_dt("post_dt", "post_dt", nbins, 0, 60);
+  TH1D pre_dlt("pre_dlt", "pre_dlt", nbins, 0, 5000), post_dlt("post_dlt", "post_dlt", nbins, 0, 5000);
+  TH1D pre_dll("pre_dll", "pre_dll", nbins, -5000, 5000), post_dll("post_dll", "post_dll", nbins, -5000, 5000);
+  TH1D pre_muqismsk("pre_muqismsk", "pre_muqismsk", nbins, 0, 250000), post_muqismsk("post_muqismsk", "post_muqismsk", nbins, 0, 250000);
+  TH1D pre_resQ("pre_resQ", "pre_resQ", nbins, -100000, 1000000), post_resQ("post_resQ", "post_resQ", nbins, -100000, 1000000);
   for (const auto& p : vp){
     if (p.dt > 0){
       pre_dt.Fill(abs(p.dt));
@@ -342,7 +344,7 @@ void CalculateSpallationVariables::CreateLikelihood(const std::string& name, con
     muqismsk_rand.SetBinContent(i, post_muqismsk.GetBinContent(i));
   }
 
-  muqismsk_spall.Scale(1/muqismsk_spall.Integral());
+  muqismsk_spall.Scale(1/muqismsk_rand.Integral());
   muqismsk_rand.Scale(1/muqismsk_rand.Integral());
 
   muqismsk_spall.Write();
@@ -355,14 +357,28 @@ void CalculateSpallationVariables::CreateLikelihood(const std::string& name, con
     resQ_rand.SetBinContent(i, post_resQ.GetBinContent(i));
   }
 
-  resQ_spall.Scale(1/resQ_spall.Integral());
+  resQ_spall.Scale(1/resQ_rand.Integral());
   resQ_rand.Scale(1/resQ_rand.Integral());
 
   resQ_spall.Write();
   resQ_rand.Write();
 
-  TH1D likepre(("likepre_"+name).c_str(), "likepre;L_{spall}", nbins, -30, 30);
-  TH1D likepost(("likepost_"+name).c_str(), "likepost;L_{spall}", nbins, -30, 30);
+  TH1D likeli_dt(  ("likeli_dt_"+name).c_str(), "like_dt;L_{spall}", nbins, 0, 60);
+  TH1D likeli_dlt(("likeli_dlt_"+name).c_str(), "like_dlt;L_{spall}", nbins, 0, 5000);
+  TH1D likeli_dll(("likeli_dll_"+name).c_str(), "like_dll;L_{spall}", nbins, -5000, 5000 );
+  TH1D likeli_muqismsk(("likeli_muqismsk_"+name).c_str(), "like_muqismsk;L_{spall}", nbins, 0, 250000);
+  TH1D likeli_resQ(("likeli_resQ_"+name).c_str(), "like_resQ;L_{spall}", nbins, -100000, 100000);
+
+  for (int bin = 0; bin < nbins; ++bin){
+    likeli_dt.SetBinContent(bin, dt_spall.GetBinContent(bin) / dt_rand.GetBinContent(bin));
+    likeli_dlt.SetBinContent(bin, dlt_spall.GetBinContent(bin) / dlt_rand.GetBinContent(bin));
+    likeli_dll.SetBinContent(bin, dll_spall.GetBinContent(bin) / dll_rand.GetBinContent(bin));
+    likeli_muqismsk.SetBinContent(bin, muqismsk_spall.GetBinContent(bin) / muqismsk_rand.GetBinContent(bin));
+    likeli_resQ.SetBinContent(bin, resQ_spall.GetBinContent(bin) / resQ_rand.GetBinContent(bin));
+  }
+  
+  TH1D likepre(("likepre_"+name).c_str(), "likepre;L_{spall}", nbins, 0, 0);
+  TH1D likepost(("likepost_"+name).c_str(), "likepost;L_{spall}", nbins, 0, 0);
 
   for (const auto& p : vp){
 
@@ -371,20 +387,23 @@ void CalculateSpallationVariables::CreateLikelihood(const std::string& name, con
     const int dll_bin = nbins * ((p.dll + 5000)/(10000));
     const int muqismsk_bin = nbins * (p.muqismsk / 250000);
     const int resQ_bin = nbins * ((p.resQ + 100000)/(200000));
-
-    //std::cout << dt_bin << dlt_bin << dll_bin << muqismsk_bin << resQ_bin << std::endl;
     
-    double likelihood = std::log10(
-				   dt_spall.GetBinContent(dt_bin) / dt_rand.GetBinContent(dt_bin) *
-				   dlt_spall.GetBinContent(dlt_bin) / dlt_rand.GetBinContent(dlt_bin) *
-				   dll_spall.GetBinContent(dll_bin) / dll_rand.GetBinContent(dll_bin) *
-				   muqismsk_spall.GetBinContent(muqismsk_bin) / muqismsk_rand.GetBinContent(muqismsk_bin) *
-				   resQ_spall.GetBinContent(resQ_bin) / resQ_rand.GetBinContent(resQ_bin));
-
+    double likelihood = likeli_dt.GetBinContent(dt_bin);// *
+				   // likeli_dll.GetBinContent(dll_bin) *
+				   // likeli_dlt.GetBinContent(dlt_bin) *
+				   // likeli_muqismsk.GetBinContent(muqismsk_bin) *
+				   // likeli_resQ.GetBinContent(resQ_bin));
+				   
     p.dt > 0 ? likepre.Fill(likelihood) : likepost.Fill(likelihood);
     
   }
-
+  
+  likeli_dt.Write();
+  likeli_dlt.Write();
+  likeli_dll.Write();
+  likeli_muqismsk.Write();
+  likeli_resQ.Write();
+  
   likepre.Write();
   likepost.Write();
   
