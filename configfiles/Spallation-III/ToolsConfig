@@ -1,0 +1,3 @@
+myLoadFileList LoadFileList configfiles/Spallation-III/LoadFileList_config
+myTreeReader TreeReader configfiles/Spallation-III/TreeReader_config
+mySpallationCut SpallationCut configfiles/Spallation-III/SpallationCut_config

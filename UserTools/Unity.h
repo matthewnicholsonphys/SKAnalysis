@@ -89,3 +89,6 @@
 //#include "MergeDipstickFiles.h"
 #include "GetSubTriggers.h"
 #include "CalculateSpallationVariables.h"
+#include "CreateSpallationExcessHistos.h"
+#include "SRNFit.h"
+#include "SpallationCut.h"

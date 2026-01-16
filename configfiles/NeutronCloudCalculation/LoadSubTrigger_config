@@ -1,1 +1,3 @@
 reader_name reader
+trigger_time_names SLE_times
+#trigger_time_names trigger_times_soft

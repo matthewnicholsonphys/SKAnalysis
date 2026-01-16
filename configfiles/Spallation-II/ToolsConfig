@@ -1,0 +1,4 @@
+# Spallation-II creates a set of excess histograms from the matchings
+myLoadFileList LoadFileList configfiles/Spallation-II/LoadFileList_config
+myTreeReader TreeReader configfiles/Spallation-II/TreeReader_config
+myCreateSpallationExcessHistos CreateSpallationExcessHistos configfiles/Spallation-II/CreateSpallationExcessHistos_config

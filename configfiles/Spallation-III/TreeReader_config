@@ -1,0 +1,22 @@
+verbosity 1
+readerName reader
+
+#inputFile /disk03/lowe12/warwick/trash2/test_jacks_086613.root
+#inputFile /home/mattnich/software/SKAnalysis/spall_test_data.root
+
+FileListName myFileList
+
+treeName spall                                    # the name of the tree within the file
+#treeName data
+# max num input entries to process
+#maxEntries 2
+skFile 0                                          # do not call SKREAD/SKRAWREAD - no need.
+
+# StartSkippedInputBranches
+# MatchedEvNums
+# MatchedInEntryNums
+# MatchedOutEntryNums
+# MatchedEntryHasAFT
+# MatchedTimeDiff
+# MatchedParticleE
+# EndSkippedInputBranches

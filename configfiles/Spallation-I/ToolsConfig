@@ -1,5 +1,6 @@
-myLoadFileList_muon LoadFileList configfiles/Spallation-I/LoadFileList_config_muon
-myLoadFileList_relic LoadFileList configfiles/Spallation-I/LoadFileList_config_relic
-myTreeReader_muon TreeReader configfiles/Spallation-I/TreeReader_config_muon
-myTreeReader_relic TreeReader configfiles/Spallation-I/TreeReader_config_relic
+# Spallation-I calculates spallation variables and saves to file.
+
+myLoadFileList LoadFileList configfiles/Spallation-I/LoadFileList_config
+myTreeReader_muon TreeReader configfiles/Spallation-I/TreeReader_config_relic
+myTreeReader_relic TreeReader configfiles/Spallation-I/TreeReader_config_muon
 myCalculateSpallationVariables CalculateSpallationVariables configfiles/Spallation-I/CalculateSpallationVariables_config

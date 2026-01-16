@@ -93,8 +93,11 @@ if (tool=="CompareCommons") ret=new CompareCommons;
 // if (tool=="NTagAnalysis") ret=new NTagAnalysis;
 // if (tool=="MergeDipstickFiles") ret=new MergeDipstickFiles;
 if (tool=="GetSubTriggers") ret=new GetSubTriggers;
- if(tool=="CalculateSpallationVariables") ret=new CalculateSpallationVariables;
- 
+if(tool=="CalculateSpallationVariables") ret=new CalculateSpallationVariables;
+
+if (tool=="CreateSpallationExcessHistos") ret=new CreateSpallationExcessHistos;
+if (tool=="SRNFit") ret=new SRNFit;
+if (tool=="SpallationCut") ret=new SpallationCut;
 return ret;
 }
 

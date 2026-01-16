@@ -7,7 +7,6 @@
 
 CalculateSpallationVariables::CalculateSpallationVariables():Tool(){}
 
-
 bool CalculateSpallationVariables::Initialise(std::string configfile, DataModel &data){
 
   if(configfile!="")  m_variables.Initialise(configfile);
@@ -19,39 +18,81 @@ bool CalculateSpallationVariables::Initialise(std::string configfile, DataModel 
   
   GetReaders();
 
-  m_variables.Get("run_type", run_type_str);
-  if (run_type_str != "cut" && run_type_str != "calculate"){
-    throw std::runtime_error("CalculateSpallationVariables::Initialise - no valid run type (calculate / cut) specified in the config file!");
-  }
+  dt_bins = MakeLogBins(0.001, 60, nbins_log+1);
+  dlt_bins = MakeLogBins(1, 5000, nbins_log+1);
+  like_bins = MakeLogBins(0.01, 20, nbins_log_like+1);
+  pre_dt_hist = TH1D("pre_dt_hist", "pre_dt_hist", nbins_log, dt_bins.data());
+  post_dt_hist = TH1D("post_dt_hist", "post_dt_hist", nbins_log, dt_bins.data());
+
+  CreateOutputFile();
+  
   return true;
 
 }
 
-
 bool CalculateSpallationVariables::Execute(){
 
-  GetMuonBranchValues();
+  GetRelicBranchValues(); // get relic branch values
 
-  // do I need to return for badly reconstructed muons? yeah, probably - only when we use `all'
-  if (MU_ptr->muboy_status == 0){
-    return true;
-  }
-  
   // "pre" means dt > 0, "post" is opposite - remember these are the times from the muon to the relic, so it's the opposite to the white paper.
+
+  v_pairing_info.clear();
+  v_dt.clear();
+  v_dlt.clear();
+  v_dll.clear();
+  v_muqismsk.clear();
+  v_resQ.clear();
+  v_muontype.clear();
+  v_bsenergy.clear();
+  v_do_check.clear();
+
+
+  //std::cout << "CalculateSpallationVariables: looping through " << MatchedTimeDiff_ptr->size() << " matched relics" << std::endl;
+
+  // if size is zero, throw exception, we should always have lots of muons matched to a relic
+  // if (MatchedTimeDiff_ptr->size() == 0){
+  //   //throw std::runtime_error("CalculateSpallationVariables::Execute: relic not matched to a single muon! problem!");
+  // }
   
-  std::cout << "CalculateSpallationVariables: looping through " << MatchedTimeDiff_ptr->size() << " matched relics" << std::endl;
-  for (int relic_idx = 0; relic_idx < MatchedTimeDiff_ptr->size(); ++relic_idx){
-    
+  for (int muon_idx = 0; muon_idx < MatchedTimeDiff_ptr->size(); ++muon_idx){
+
     /* dt - time difference between muon and relic candidate */
     /* mu - relic */
-    float dt = MatchedTimeDiff_ptr->at(relic_idx)/pow(10,9);
-    dt > 0 ? pre_dt_hist.Fill(abs(dt)) : post_dt_hist.Fill(abs(dt));
+    float dt = MatchedTimeDiff_ptr->at(muon_idx)/pow(10,9);
+    //dt < 0 ? pre_dt_hist.Fill(abs(dt)) : post_dt_hist.Fill(abs(dt)); // change all signs .. (we are not fallible)
     
-    relic_tree_ptr->GetEntry(MatchedOutEntryNums_ptr->at(relic_idx));
-    GetRelicBranchValues();
+    muon_tree_ptr->GetEntry(MatchedOutEntryNums_ptr->at(muon_idx)); // get muons 
+    GetMuonBranchValues();	// get muon values
 
+    // do I need to return for badly reconstructed muons? yeah, probably - only when we use `all'
+    if (MU_ptr->muboy_status == 0){
+
+      v_pairing_info.push_back("");
+      v_dt.push_back(0);
+      v_dlt.push_back(0);
+      v_dll.push_back(0);
+      v_muqismsk.push_back(0);
+      v_resQ.push_back(0);
+      v_muontype.push_back(0);
+      v_bsenergy.push_back(0);
+      v_do_check.push_back(false);
+
+      continue;
+    }
+    
     if (LOWE_ptr->bsenergy > 1000){
       //bad reconstruction, skipping
+
+      v_pairing_info.push_back("");
+      v_dt.push_back(0);
+      v_dlt.push_back(0);
+      v_dll.push_back(0);
+      v_muqismsk.push_back(0);
+      v_resQ.push_back(0);
+      v_muontype.push_back(0);
+      v_bsenergy.push_back(0);
+      v_do_check.push_back(false);
+      
       continue;
     }
 
@@ -64,7 +105,7 @@ bool CalculateSpallationVariables::Execute(){
     bool did_bff = MU_ptr->muinfo[6];
     double muon_tracklen = 0;
     
-    if (did_bff){
+    if (did_bff){ // we never did do bff
       basic_array<float> bff_entrypoint(MU_ptr->mubff_entpos);
       basic_array<float> bff_dir = MU_ptr->mubff_dir;
 
@@ -103,12 +144,14 @@ bool CalculateSpallationVariables::Execute(){
       throw std::runtime_error("CalculateSpallationVariables:: bad dlt");
     }
     
-    dt > 0 ? pre_dlt_hist.Fill(dlt) : post_dlt_hist.Fill(dlt);
+    // dt < 0 ? pre_dlt_hist.Fill(dlt) : post_dlt_hist.Fill(dlt);
     
     /* dll - longitudinal distance between the muon and relic candidate*/
-    basic_array<float> scott_dedx(MU_ptr->muboy_dedx);
-    float* muon_dedx = const_cast<float*>(scott_dedx.data());
-    
+    // basic_array<float> scott_dedx(MU_ptr->muboy_dedx);
+    // float* muon_dedx = const_cast<float*>(scott_dedx.data());
+
+    const float* muon_dedx = MU_ptr->muboy_dedx;
+
     double max_edep = 0;
     int max_edep_bin=0;
     for(int i=0;i<111;i++){
@@ -135,11 +178,11 @@ bool CalculateSpallationVariables::Execute(){
     }
 
 
-    dt > 0 ? pre_dll_hist.Fill(dll) : post_dll_hist.Fill(dll);
+    // dt < 0 ? pre_dll_hist.Fill(dll) : post_dll_hist.Fill(dll); // sign changes
 
     /* muqismsk - max charge deposited in the detector by the muon*/
     float muqismsk = (MU_ptr->muqismsk);
-    dt > 0 ? pre_muqismsk_hist.Fill(muqismsk) : post_muqismsk_hist.Fill(muqismsk);
+    // dt < 0 ? pre_muqismsk_hist.Fill(muqismsk) : post_muqismsk_hist.Fill(muqismsk);
     
     /* 
        resQ - residual charge deposited by the muon compared to the value expected from the min ionization. 
@@ -152,7 +195,7 @@ bool CalculateSpallationVariables::Execute(){
     double pe_from_muon = MU_ptr->muqismsk * (pe_per_cm / pe_per_coulomb);  // pe*cm^-1 / pe*C^-1 = C/cm
     double pe_from_MIP = muon_tracklen * pe_per_cm;
     float resQ = pe_from_muon - pe_from_MIP;
-    dt > 0 ? pre_resQ_hist.Fill(resQ) : post_resQ_hist.Fill(resQ);
+    // dt < 0 ? pre_resQ_hist.Fill(resQ) : post_resQ_hist.Fill(resQ);
 
     /* lastly, we need the type of muon event: misfit=0, single_through=1, single_stopping=2, multi=3,4, corner=5 */
     int muon_type = MU_ptr->muboy_status;
@@ -161,45 +204,71 @@ bool CalculateSpallationVariables::Execute(){
     float bse = LOWE_ptr->bsenergy;
     
     PairingInfo p = {dt, dlt, dll, muqismsk, resQ, muon_type, bse}; 
-    //    PairingInfo p = {dt, dlt, dll, muon_type, bse}; // ditch the muon related variables for now
     std::string p_str = GetPairingString(p);
-    pairings[p_str].push_back(p);
+    //pairings[p_str].push_back(p);
+
+    v_pairing_info.push_back(p_str);
+    v_dt.push_back(dt);
+    v_dlt.push_back(dlt);
+    v_dll.push_back(dll);
+    v_muqismsk.push_back(muqismsk);
+    v_resQ.push_back(resQ);
+    v_muontype.push_back(muon_type);
+    v_bsenergy.push_back(bse);
+    v_do_check.push_back(true); // check is false for badly reconstructuted muons and or relics, still save to preserve matching 
+
   }
+
+  data_output_tree_ptr->Fill();
   
   return true;
 }
 
-
 bool CalculateSpallationVariables::Finalise(){
-  
-  std::string outputfile_str = "";
-  m_variables.Get("outputfile_str", outputfile_str);
-  if (outputfile_str.empty()){throw std::runtime_error("CalculateSpallationVariables::Finalise(): no output file specified!");}
 
-  TFile output_file = TFile(outputfile_str.c_str(), "RECREATE");
-  if (output_file.IsZombie()){throw std::runtime_error("CalculateSpallationVariables::Finalise(): couldn't open output file!");}
-  output_file.cd();
-
-  pre_dt_hist.Write();
-  post_dt_hist.Write();
-  pre_dlt_hist.Write();
-  post_dlt_hist.Write();
-  pre_dll_hist.Write();
-  post_dll_hist.Write();
-  pre_muqismsk_hist.Write();
-  post_muqismsk_hist.Write();
-  pre_resQ_hist.Write();
-  post_resQ_hist.Write();
-
-  std::cout << "number of hists " << pairings.size() << std::endl;
+  // TTree* relic_tree_clone_ptr = relic_tree_ptr->GetTree()->CloneTree();
   
-  for (const auto& [name, v_pairing] : pairings){
-    std::cout << "name: " << name << std::endl;
-    CreateLikelihood(name, v_pairing);
-    
-  }
+  data_output_file_ptr->cd();
+  // relic_tree_clone_ptr->Write();
+  data_output_tree_ptr->Write();
+
+  data_output_file_ptr->Close();
+
+  // std::string hist_outputfile_str = "";
+  // m_variables.Get("hist_output_file_str", hist_outputfile_str);
+  // if (hist_outputfile_str.empty()){throw std::runtime_error("CalculateSpallationVariables::Finalise(): no hist_output file specified!");}
+
+  // TFile hist_output_file = TFile(hist_outputfile_str.c_str(), "RECREATE");
+  // if (hist_output_file.IsZombie()){throw std::runtime_error("CalculateSpallationVariables::Finalise(): couldn't open hist_output file!");}
+  // hist_output_file.cd();
   
-  output_file.Write();
+  // for (int bin_idx = 1; bin_idx < pre_dt_hist.GetNbinsX()+1; ++bin_idx){
+  //   pre_dt_hist.SetBinContent(bin_idx,
+  // 			      pre_dt_hist.GetBinContent(bin_idx)/pre_dt_hist.GetBinWidth(bin_idx));
+  //   post_dt_hist.SetBinContent(bin_idx,
+  // 			      post_dt_hist.GetBinContent(bin_idx)/post_dt_hist.GetBinWidth(bin_idx));
+  // }
+  
+  // pre_dt_hist.Write();
+  // post_dt_hist.Write();
+  // pre_dlt_hist.Write();
+  // post_dlt_hist.Write();
+  // pre_dll_hist.Write();
+  // post_dll_hist.Write();
+  // pre_muqismsk_hist.Write();
+  // post_muqismsk_hist.Write();
+  // pre_resQ_hist.Write();
+  // post_resQ_hist.Write();
+
+  //std::cout << "number of hists " << pairings.size() << std::endl;
+  
+  // for (const auto& [name, v_pairing] : pairings){
+  //   std::cout << "name: " << name << std::endl;
+  //   CreateLikelihood(name, v_pairing);
+  // }
+  
+  // hist_output_file.Write();
+  // hist_output_file.Close();
   
   return true;
 }
@@ -225,26 +294,29 @@ void CalculateSpallationVariables::GetReaders(){
 
 }
 
-void CalculateSpallationVariables::GetMuonBranchValues(){
-  bool ok = muon_tree_ptr->Get("MatchedTimeDiff", MatchedTimeDiff_ptr);
-  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetMuonBranchValues: Couldn't retrieve MatchedTimeDiff!");}
-  ok = muon_tree_ptr->Get("MatchedOutEntryNums", MatchedOutEntryNums_ptr);
-  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetMuonBranchValues: Couldn't retrieve MatchedOutEntryNums!");}
-  ok = muon_tree_ptr->Get("MU", MU_ptr);
-  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetMuonBranchValues: Couldn't retrieve MU!");}
+void CalculateSpallationVariables::GetRelicBranchValues(){
+  bool ok = relic_tree_ptr->Get("MatchedTimeDiff", MatchedTimeDiff_ptr);
+  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetRelicBranchValues: Couldn't retrieve MatchedTimeDiff!");}
+  ok = relic_tree_ptr->Get("MatchedOutEntryNums", MatchedOutEntryNums_ptr);
+  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetRelicBranchValues: Couldn't retrieve MatchedOutEntryNums!");}
+  ok = relic_tree_ptr->Get("LOWE", LOWE_ptr);
+  if (!ok){throw std::runtime_error("CalculateSpallationVariables::GetRelicBranchValues: Couldn't retrieve LOWE!!");}
   return;
 }
 
-void CalculateSpallationVariables::GetRelicBranchValues(){
-  LOWE_ptr = nullptr;
-  bool ok = relic_tree_ptr->Get("LOWE", LOWE_ptr);
+void CalculateSpallationVariables::GetMuonBranchValues(){
+  MU_ptr = nullptr;
+  bool ok = muon_tree_ptr->Get("MU", MU_ptr);
+  if (!ok || MU_ptr == nullptr){
+    throw std::runtime_error("CalculateSpallationVariables::GetMuonBranchValues: can't get MU branch!");
+  }
   return;
 }
 
 std::string CalculateSpallationVariables::GetPairingString(PairingInfo p) const {
   std::string hist_str = "";
 
-  return "all";
+  // return "all";
   
   const std::vector<std::string> type_strs = {"misfit", "singlethru", "singlestop", "multi", "multi", "corner"};
   hist_str+=type_strs.at(p.muon_type);
@@ -277,11 +349,18 @@ std::string CalculateSpallationVariables::GetPairingString(PairingInfo p) const 
 }
 
 void CalculateSpallationVariables::CreateLikelihood(const std::string& name, const std::vector<PairingInfo>& vp) const {
-  TH1D pre_dt("pre_dt", "pre_dt", nbins, 0, 60), post_dt("post_dt", "post_dt", nbins, 0, 60);
-  TH1D pre_dlt("pre_dlt", "pre_dlt", nbins, 0, 5000), post_dlt("post_dlt", "post_dlt", nbins, 0, 5000);
+  // this isn't used but we keep it here if we ever want to do full splitting of muon/relic phase space.
+  
+
+  TH1D pre_dt("pre_dt", "pre_dt", nbins_log, dt_bins.data()), post_dt("post_dt", "post_dt", nbins_log, dt_bins.data());
+  //TH1D pre_dlt("pre_dlt", "pre_dlt", nbins, 0, 5000), post_dlt("post_dlt", "post_dlt", nbins, 0, 5000);
+  TH1D pre_dlt("pre_dlt", "pre_dlt", nbins_log, dlt_bins.data()), post_dlt("post_dlt", "post_dlt", nbins_log, dlt_bins.data());
+
   TH1D pre_dll("pre_dll", "pre_dll", nbins, -5000, 5000), post_dll("post_dll", "post_dll", nbins, -5000, 5000);
   TH1D pre_muqismsk("pre_muqismsk", "pre_muqismsk", nbins, 0, 250000), post_muqismsk("post_muqismsk", "post_muqismsk", nbins, 0, 250000);
   TH1D pre_resQ("pre_resQ", "pre_resQ", nbins, -100000, 1000000), post_resQ("post_resQ", "post_resQ", nbins, -100000, 1000000);
+
+  
   for (const auto& p : vp){
     if (p.dt > 0){
       pre_dt.Fill(abs(p.dt));
@@ -298,111 +377,87 @@ void CalculateSpallationVariables::CreateLikelihood(const std::string& name, con
     }
   }
 
-  TH1D dt_spall(("dt_spall_"+name).c_str(), "dt_spall;dt", nbins, 0, 60);
-  TH1D dt_rand(("dt_rand_"+name).c_str(), "dt_rand;dt", nbins, 0, 60);
-  for (int i = 0; i <= nbins; ++i){
-    dt_spall.SetBinContent(i,  pre_dt.GetBinContent(i) - post_dt.GetBinContent(i));
-    dt_rand.SetBinContent(i, post_dt.GetBinContent(i));
-  }
+  //come back to this when you get the damn likelihoods working
+  // for (int bin_idx = 1; bin_idx < pre_dt.GetNbinsX()+1; ++bin_idx){
+  //   pre_dt.SetBinContent(bin_idx,
+  // 			      pre_dt.GetBinContent(bin_idx)/pre_dt.GetBinWidth(bin_idx));
+  //   post_dt.SetBinContent(bin_idx,
+  // 			      post_dt.GetBinContent(bin_idx)/post_dt.GetBinWidth(bin_idx));
+  // }
 
-  dt_spall.Scale(1/dt_spall.Integral());
-  dt_rand.Scale(1/dt_rand.Integral());
-
-  dt_spall.Write();
-  dt_rand.Write();
-
-  TH1D dlt_spall(("dlt_spall_"+name).c_str(), "dlt_spall;dlt", nbins, 0, 5000);
-  TH1D dlt_rand(("dlt_rand_"+name).c_str(), "dlt_rand;dlt", nbins, 0, 5000);
-  for (int i = 0; i <= nbins; ++i){
-    dlt_spall.SetBinContent(i, pre_dlt.GetBinContent(i) - post_dlt.GetBinContent(i));
-    dlt_rand.SetBinContent(i, post_dlt.GetBinContent(i));
-  }
-
-  dlt_spall.Scale(1/dlt_spall.Integral());
-  dlt_rand.Scale(1/dlt_rand.Integral());
-
-  dlt_spall.Write();
-  dlt_rand.Write();
-
-  TH1D dll_spall(("dll_spall_"+name).c_str(), "dll_spall;dll", nbins, -5000, 5000);
-  TH1D dll_rand(("dll_rand_"+name).c_str(), "dll_rand;dll", nbins, -5000, 5000);
-  for (int i = 0; i <= nbins; ++i){
-    dll_spall.SetBinContent(i, pre_dll.GetBinContent(i) - post_dll.GetBinContent(i));
-    dll_rand.SetBinContent(i, post_dll.GetBinContent(i));
-  }
-
-  dll_spall.Scale(1/dll_spall.Integral());
-  dll_rand.Scale(1/dll_rand.Integral());
-
-  dll_spall.Write();
-  dll_rand.Write();
-
-  TH1D muqismsk_spall(("muqismsk_spall_"+name).c_str(), "muqismsk_spall;muqismsk", nbins, 0, 250000);
-  TH1D muqismsk_rand(("muqismsk_rand_"+name).c_str(), "muqismsk_rand;muqismsk", nbins, 0, 250000);
-  for (int i = 0; i <= nbins; ++i){
-    muqismsk_spall.SetBinContent(i, pre_muqismsk.GetBinContent(i) - post_muqismsk.GetBinContent(i));
-    muqismsk_rand.SetBinContent(i, post_muqismsk.GetBinContent(i));
-  }
-
-  muqismsk_spall.Scale(1/muqismsk_rand.Integral());
-  muqismsk_rand.Scale(1/muqismsk_rand.Integral());
-
-  muqismsk_spall.Write();
-  muqismsk_rand.Write();
-
-  TH1D resQ_spall(("resQ_spall_"+name).c_str(), "resQ_spall;resQ", nbins, -100000, 100000 );
-  TH1D resQ_rand(("resQ_rand_"+name).c_str(), "resQ_rand;resQ", nbins, -100000, 100000);
-  for (int i = 0; i <= nbins; ++i){
-    resQ_spall.SetBinContent(i, pre_resQ.GetBinContent(i) - post_resQ.GetBinContent(i));
-    resQ_rand.SetBinContent(i, post_resQ.GetBinContent(i));
-  }
-
-  resQ_spall.Scale(1/resQ_rand.Integral());
-  resQ_rand.Scale(1/resQ_rand.Integral());
-
-  resQ_spall.Write();
-  resQ_rand.Write();
-
-  TH1D likeli_dt(  ("likeli_dt_"+name).c_str(), "like_dt;L_{spall}", nbins, 0, 60);
-  TH1D likeli_dlt(("likeli_dlt_"+name).c_str(), "like_dlt;L_{spall}", nbins, 0, 5000);
-  TH1D likeli_dll(("likeli_dll_"+name).c_str(), "like_dll;L_{spall}", nbins, -5000, 5000 );
-  TH1D likeli_muqismsk(("likeli_muqismsk_"+name).c_str(), "like_muqismsk;L_{spall}", nbins, 0, 250000);
-  TH1D likeli_resQ(("likeli_resQ_"+name).c_str(), "like_resQ;L_{spall}", nbins, -100000, 100000);
-
-  for (int bin = 0; bin < nbins; ++bin){
-    likeli_dt.SetBinContent(bin, dt_spall.GetBinContent(bin) / dt_rand.GetBinContent(bin));
-    likeli_dlt.SetBinContent(bin, dlt_spall.GetBinContent(bin) / dlt_rand.GetBinContent(bin));
-    likeli_dll.SetBinContent(bin, dll_spall.GetBinContent(bin) / dll_rand.GetBinContent(bin));
-    likeli_muqismsk.SetBinContent(bin, muqismsk_spall.GetBinContent(bin) / muqismsk_rand.GetBinContent(bin));
-    likeli_resQ.SetBinContent(bin, resQ_spall.GetBinContent(bin) / resQ_rand.GetBinContent(bin));
-  }
+  const double post_integral = post_dt.Integral();
   
-  TH1D likepre(("likepre_"+name).c_str(), "likepre;L_{spall}", nbins, 0, 0);
-  TH1D likepost(("likepost_"+name).c_str(), "likepost;L_{spall}", nbins, 0, 0);
+  TH1D excess_dt("excess_dt", "excess;dt", nbins_log, dt_bins.data());
+  for (int bin_idx = 1; bin_idx < excess_dt.GetNbinsX()+1; ++bin_idx){
+    excess_dt.SetBinContent(bin_idx, (pre_dt.GetBinContent(bin_idx) / (post_integral * (post_dt.GetBinWidth(bin_idx)) / post_dt.GetXaxis()->GetXmax() - post_dt.GetXaxis()->GetXmin())) - 1); 
+  }
 
+  excess_dt.Write();
+ 
+  TH1D excess_dlt("excess_dlt", "excess;dlt", nbins_log, dlt_bins.data());
+  for (int bin_idx = 1; bin_idx < excess_dlt.GetNbinsX()+1; ++bin_idx){
+    if (post_dlt.GetBinContent(bin_idx) != 0 ){
+      excess_dlt.SetBinContent(bin_idx, (pre_dlt.GetBinContent(bin_idx) / post_dlt.GetBinContent(bin_idx)) - 1);
+    } else {
+      excess_dlt.SetBinContent(bin_idx, 0);
+    }
+  }
+  excess_dlt.Write();
+
+  TH1D excess_dll("excess_dll", "excess;dll", nbins, -5000, 5000);
+  for (int bin_idx = 1; bin_idx < excess_dll.GetNbinsX()+1; ++bin_idx){
+    if (post_dll.GetBinContent(bin_idx) != 0 ){
+      excess_dll.SetBinContent(bin_idx, (pre_dll.GetBinContent(bin_idx) / post_dll.GetBinContent(bin_idx)) - 1); 
+    } else {
+      excess_dll.SetBinContent(bin_idx, 0);
+    }
+
+  }
+  excess_dll.Write();
+  
+  TH1D excess_muqismsk("excess_muqismsk", "excess;muqismsk", nbins, 0, 250000);
+  for (int bin_idx = 1; bin_idx < excess_muqismsk.GetNbinsX()+1; ++bin_idx){
+    if (post_muqismsk.GetBinContent(bin_idx) != 0 ){
+      excess_muqismsk.SetBinContent(bin_idx, (pre_muqismsk.GetBinContent(bin_idx) / post_muqismsk.GetBinContent(bin_idx)) - 1); 
+    } else {
+      excess_muqismsk.SetBinContent(bin_idx, 0);
+    }
+    
+  }
+  excess_muqismsk.Write();
+
+  TH1D excess_resQ("excess_resQ", "excess;resQ", nbins, -100000, 100000);
+  for (int bin_idx = 1; bin_idx < excess_resQ.GetNbinsX()+1; ++bin_idx){
+    if (post_resQ.GetBinContent(bin_idx) != 0 ){
+      excess_resQ.SetBinContent(bin_idx, (pre_resQ.GetBinContent(bin_idx) / post_resQ.GetBinContent(bin_idx)) - 1); 
+    } else {
+      excess_resQ.SetBinContent(bin_idx, 0);
+    }
+  }
+  excess_resQ.Write();
+
+  TH1D likepre(("likepre_"+name).c_str(), "likepre;L_{spall}", nbins_log_like, like_bins.data());
+  TH1D likepost(("likepost_"+name).c_str(), "likepost;L_{spall}", nbins_log_like, like_bins.data());
+  
   for (const auto& p : vp){
 
-    const int dt_bin = nbins * ((abs(p.dt) / (60)));
-    const int dlt_bin = nbins * (p.dlt / 5000);
-    const int dll_bin = nbins * ((p.dll + 5000)/(10000));
-    const int muqismsk_bin = nbins * (p.muqismsk / 250000);
-    const int resQ_bin = nbins * ((p.resQ + 100000)/(200000));
+    const int dt_bin = excess_dt.FindBin(abs(p.dt));
+    const int dlt_bin = excess_dlt.FindBin(abs(p.dlt));
+    const int dll_bin = excess_dll.FindBin(abs(p.dll));
+    const int muqismsk_bin = excess_muqismsk.FindBin(abs(p.muqismsk));
+    const int resQ_bin = excess_resQ.FindBin(abs(p.resQ));
+      
+    //double likelihood = likeli_dt.GetBinContent(dt_bin);// *
+    double likelihood = excess_dt.GetBinContent(dt_bin) *
+      excess_dlt.GetBinContent(dlt_bin);// *
+      //  excess_dll.GetBinContent(dll_bin) *
+      //      excess_muqismsk.GetBinContent(muqismsk_bin) *
+      //      excess_resQ.GetBinContent(resQ_bin);      
     
-    double likelihood = likeli_dt.GetBinContent(dt_bin);// *
-				   // likeli_dll.GetBinContent(dll_bin) *
-				   // likeli_dlt.GetBinContent(dlt_bin) *
-				   // likeli_muqismsk.GetBinContent(muqismsk_bin) *
-				   // likeli_resQ.GetBinContent(resQ_bin));
-				   
+    likelihood = std::max(likelihood, 0.0);
     p.dt > 0 ? likepre.Fill(likelihood) : likepost.Fill(likelihood);
     
   }
-  
-  likeli_dt.Write();
-  likeli_dlt.Write();
-  likeli_dll.Write();
-  likeli_muqismsk.Write();
-  likeli_resQ.Write();
   
   likepre.Write();
   likepost.Write();
@@ -506,3 +561,41 @@ double CalculateSpallationVariables::CalculateTrackLen(float* muon_entrypoint, f
   return tracklen;
 	
 }
+
+std::vector<double> CalculateSpallationVariables::MakeLogBins(double xmin, double xmax, int nbins){
+        std::vector<double> binedges(nbins+1);
+        double xxmin=log10(xmin);
+        double xxmax = log10(xmax);
+        for(int i=0; i<nbins; ++i){
+                binedges[i] = pow(10,xxmin + (double(i)/(nbins-1.))*(xxmax-xxmin));
+        }
+        binedges[nbins+1] = xmax; // required                                                                                                                  
+        return binedges;
+}
+
+void CalculateSpallationVariables::CreateOutputFile(){
+  std::string data_output_file_str = "";
+  m_variables.Get("data_output_file_str", data_output_file_str);
+  if (data_output_file_str.empty()){
+    throw std::runtime_error("CalculateSpallationVariables::CreateData_OutputFile: No data_output file specified!");
+  }
+  data_output_file_ptr = new TFile(data_output_file_str.c_str(), "RECREATE");
+  data_output_tree_ptr = new TTree("spall", "spall");
+
+  data_output_tree_ptr->Branch("pairing_string", &v_pairing_info);
+  data_output_tree_ptr->Branch("dt", &v_dt);
+  data_output_tree_ptr->Branch("dlt", &v_dlt);
+  data_output_tree_ptr->Branch("dll", &v_dll);
+  data_output_tree_ptr->Branch("muqismsk", &v_muqismsk);
+  data_output_tree_ptr->Branch("resQ", &v_resQ);
+  data_output_tree_ptr->Branch("muon_type", &v_muontype);
+  data_output_tree_ptr->Branch("bsenergy", &v_bsenergy);
+  data_output_tree_ptr->Branch("do_check", &v_do_check);
+  
+  return;
+}
+
+
+// change muon sided to relic sided, get rid of the execute hists, save pairing info and relic info, new toolchain for making likelihood hists, another one making cuts
+
+
