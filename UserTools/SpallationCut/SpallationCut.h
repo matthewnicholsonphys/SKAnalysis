@@ -45,7 +45,7 @@ private:
   TFile* output_file_ptr = nullptr;
   TTree* output_tree_ptr = nullptr;
 
-  std::vector<std::array<double, 5>> v_likelihoods = {};
+  std::vector<std::vector<double>> v_likelihoods = {};
   
 };
 
