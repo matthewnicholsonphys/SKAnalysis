@@ -28,7 +28,7 @@ bool CreateSpallationExcessHistos::Execute(){
   for (int muon_idx = 0; muon_idx < v_dt->size(); ++muon_idx){
     if (v_do_check->at(muon_idx) == false){continue;}
     if (v_dt->at(muon_idx) < 0){
-      pre_dt.Fill(v_dt->at(muon_idx));
+      pre_dt.Fill(abs(v_dt->at(muon_idx)));
       pre_dlt.Fill(v_dlt->at(muon_idx));
       pre_dll.Fill(v_dll->at(muon_idx));
       pre_muqismsk.Fill(v_muqismsk->at(muon_idx));
@@ -99,6 +99,9 @@ bool CreateSpallationExcessHistos::Finalise(){
   }
   excess_resQ.Write();
 
+  pre_dt.Write();
+  post_dt.Write();
+  
   output_file_ptr->Close();
   
   return true;
@@ -168,7 +171,7 @@ std::vector<double> CreateSpallationExcessHistos::MakeLogBins(const double& xmin
         for(int i=0; i<nbins; ++i){
                 binedges[i] = pow(10,xxmin + (double(i)/(nbins-1.))*(xxmax-xxmin));
         }
-        binedges[nbins+1] = xmax; // required    
+        binedges[nbins] = xmax; // required    
         return binedges;
 }
 

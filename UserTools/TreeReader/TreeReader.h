@@ -69,6 +69,7 @@ class TreeReader: public Tool {
 	int entrynum=0;
 	int readEntries=0;                // count how many entries we've actually returned
 	SKROOTMODE skrootMode=SKROOTMODE::READ;  // default to read
+        bool ownsFile = true;
 	int skreadMode=0;                 // 0=skread only, 1=skrawread only, 2=both
 	int skreadUser=0;                 // 0=auto, 1=skread only, 2=skrawread only, 3=both
 	int LUN=0;                        // Assumed 10 by some SK routines, only change if you know what you're doing!

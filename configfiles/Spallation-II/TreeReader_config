@@ -2,7 +2,7 @@ verbosity 1
 readerName reader
 
 #inputFile /disk03/lowe12/warwick/trash2/test_jacks_086613.root
-#inputFile /home/mattnich/software/SKAnalysis/spall_test_data.root
+inputFile /home/mattnich/software/SKAnalysis/spall_one_test.root
 
 FileListName myFileList
 

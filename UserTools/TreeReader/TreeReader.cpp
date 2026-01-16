@@ -783,6 +783,10 @@ bool TreeReader::Initialise(std::string configfile, DataModel &data){
 		}
 		m_verbose = tmp_verb;
 	}
+
+	if(!ownsFile){
+	  myTreeReader.SetOwnsFile(false);
+	}
 	
 	return true;
 }
@@ -1843,6 +1847,7 @@ int TreeReader::LoadConfig(std::string configfile){
 		else if(thekey=="skoptn") skroot_options = thevalue;
 		else if(thekey=="skbadopt") skroot_badopt = stoi(thevalue);
 		else if(thekey=="mcReferenceRun") skroot_ref_run = stoi(thevalue);
+		else if(thekey=="ownsFile") ownsFile = stoi(thevalue);
 		//else if(thekey=="skbadchrun") skroot_badch_ref_run = stoi(thevalue);
 		// this reference run is used bad channel masking, dark rates and water transparency
 		// not sure it make sense to use multiple different ones, but moreover it seems like
